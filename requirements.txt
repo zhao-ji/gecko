@@ -1,0 +1,6 @@
+argparse==1.2.1
+dnslib==0.9.6
+gevent==1.0.2
+greenlet==0.4.9
+redis==2.10.5
+wsgiref==0.1.2
