@@ -1,0 +1,2 @@
+# gecko
+clean DNS
