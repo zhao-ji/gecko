@@ -17,6 +17,13 @@ from dnslib import DNSRecord, DNSQuestion
 from redis import StrictRedis
 
 
+# DNS 记录缓存时间为 六小时
+RECORD_CACHE_TIME = 6 * 60 * 60
+# 客户端请求频率限制为 一分钟一百次
+FREQUENCY_TIMES = 100
+FREQUENCY_SECONDS = 60
+
+
 class CleanDNSHandler(DatagramRequestHandler):
 
     def __init__(self, request, client_address, server):
@@ -48,10 +55,11 @@ class CleanDNSHandler(DatagramRequestHandler):
         log.info("frequency check")
         log.info("frequency exists")
         token_should_be = int(
-            (time_now - IP_frequency["timestamp"]) / 60 * 100
+            (time_now - IP_frequency["timestamp"]
+             ) / FREQUENCY_SECONDS * FREQUENCY_TIMES
         ) + IP_frequency["token"]
-        if token_should_be > 100:
-            token_should_be = 100
+        if token_should_be > FREQUENCY_TIMES:
+            token_should_be = FREQUENCY_TIMES
         assert token_should_be >= 1
 
         r.hmset(frequency_key,
@@ -80,17 +88,17 @@ class CleanDNSHandler(DatagramRequestHandler):
     def cache_hit(self):
         log.info("go into cache_hit")
         cache_key = "cache:{}:{}".format(self.qtype, self.qname)
-        cache_ret = r.smembers(cache_key)
+        cache_ret = r.get(cache_key)
         if cache_ret:
             log.info("cache_hit: {}".format(self.query_id))
             response_packet = DNSRecord()
             response_packet.header.id = self.query_id
             response_packet.add_question(DNSQuestion(self.qname))
-            for answer in cache_ret:
-                response_packet.add_answer(loads(answer))
+            for answer in loads(cache_ret):
+                response_packet.add_answer(answer)
             log.info(response_packet.__str__())
             log.info("DNS response id {}".format(self.query_id))
-            response_packet_str = response_packet.__str__()
+            response_packet_str = response_packet.pack().__str__()
             self.wfile.write(response_packet_str)
             return True
 
@@ -112,8 +120,7 @@ class CleanDNSHandler(DatagramRequestHandler):
 
         cache_key = "cache:{}:{}".format(self.qtype, self.qname)
         response_parse_ret = DNSRecord.parse(response_packet)
-        for answer in response_parse_ret.rr:
-            r.sadd(cache_key, dumps(answer))
+        r.setex(cache_key, RECORD_CACHE_TIME, dumps(response_parse_ret.rr))
 
     def handle(self):
         """
@@ -162,8 +169,8 @@ if __name__ == "__main__":
 
     r = StrictRedis()
 
-    server = UDPServer(("127.0.0.1", 5353), CleanDNSHandler)
-    log.info("DNS server start at localhost:5353")
+    server = UDPServer(("0.0.0.0", 5353), CleanDNSHandler)
+    log.info("DNS server start at 0.0.0.0:5353")
     server.serve_forever()
     # server_thread = Thread(target=server.serve_forever)
     # server_thread.daemon = False
