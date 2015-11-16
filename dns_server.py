@@ -103,6 +103,8 @@ class CleanDNSHandler(DatagramRequestHandler):
             return True
 
     def white_list_check(self):
+        if self.qname.endswith(".cn") or self.qname.endswith(".cn."):
+            return True
         white_qname_key = "white_list:{}".format(self.qname)
         return r.exists(white_qname_key)
 
@@ -143,8 +145,9 @@ class CleanDNSHandler(DatagramRequestHandler):
             self.selected_DNS = choice(["114.114.114.114", "223.5.5.5"])
         elif self.black_list_check():
             # black DNS 8.8.8.8 8.8.4.4 208.67.222.222 208.67.220.220
-            self.selected_DNS = choice([
-                "8.8.8.8", "8.8.4.4", "208.67.222.222", "208.67.220.220"])
+            # self.selected_DNS = choice([
+            #     "8.8.8.8", "8.8.4.4", "208.67.222.222", "208.67.220.220"])
+            self.selected_DNS = "8.8.8.8"
         else:
             # use white DNS and push into check list
             self.selected_DNS = "8.8.8.8"
