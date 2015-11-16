@@ -58,8 +58,6 @@ class CleanDNSHandler(DatagramRequestHandler):
                 frequency_key, "token", 99, "timestamp", time_now)
             return
 
-        log.info("frequency check")
-        log.info("frequency exists")
         token_should_be = int(
             (time_now - IP_frequency["timestamp"]
              ) / FREQUENCY_SECONDS * FREQUENCY_TIMES
@@ -73,7 +71,6 @@ class CleanDNSHandler(DatagramRequestHandler):
 
     def parse(self):
         query_parse_ret = DNSRecord.parse(self.packet)
-        log.info("parse")
 
         query_opcode = query_parse_ret.header.get_opcode()
         if query_opcode == 0:
@@ -92,7 +89,6 @@ class CleanDNSHandler(DatagramRequestHandler):
         self.qtype = query_parse_ret.q.qtype
 
     def cache_hit(self):
-        log.info("go into cache_hit")
         cache_key = "cache:{}:{}".format(self.qtype, self.qname)
         cache_ret = cache_db.get(cache_key)
         if cache_ret:
@@ -135,17 +131,14 @@ class CleanDNSHandler(DatagramRequestHandler):
         """
         处理DNS请求的主体流程
         """
-        log.info("come in")
         # 请求IP频率检查 防止被反射放大攻击者利用
         # self.IP_frequency()
-        log.info("come parse")
         # 请求包解析
         self.parse()
         # cache 检查
         if self.cache_hit():
             return
 
-        log.info("hello")
         # 缓存里面没有 选定上游DNS
         if self.white_list_check():
             # white DNS 114.114.114.114 223.5.5.5
