@@ -22,6 +22,11 @@ RECORD_CACHE_TIME = 6 * 60 * 60
 # 客户端请求频率限制为 一分钟一百次
 FREQUENCY_TIMES = 100
 FREQUENCY_SECONDS = 60
+# 各仓库号预定义
+FREQUENCY_DB_NO = 0
+CACHE_DB_NO = 1
+SETUP_DOMAIN_DB_NO = 2
+GRAY_DOMAIN_DB_NO = 3
 
 
 class CleanDNSHandler(DatagramRequestHandler):
@@ -46,10 +51,11 @@ class CleanDNSHandler(DatagramRequestHandler):
         # IP_int = reduce(lambda i, j: i*2**8 + int(j),
         #                 self.client_address[0].split("."))
         frequency_key = "IP:{}".format(self.client_address[0])
-        IP_frequency = r.hgetall(frequency_key)
+        IP_frequency = frequency_db.hgetall(frequency_key)
         time_now = int(time())
         if not IP_frequency:
-            r.hmset(frequency_key, "token", 99, "timestamp", time_now)
+            frequency_db.hmset(
+                frequency_key, "token", 99, "timestamp", time_now)
             return
 
         log.info("frequency check")
@@ -62,8 +68,8 @@ class CleanDNSHandler(DatagramRequestHandler):
             token_should_be = FREQUENCY_TIMES
         assert token_should_be >= 1
 
-        r.hmset(frequency_key,
-                "token", token_should_be-1, "timestamp", time_now)
+        frequency_db.hmset(
+            frequency_key, "token", token_should_be-1, "timestamp", time_now)
 
     def parse(self):
         query_parse_ret = DNSRecord.parse(self.packet)
@@ -88,7 +94,7 @@ class CleanDNSHandler(DatagramRequestHandler):
     def cache_hit(self):
         log.info("go into cache_hit")
         cache_key = "cache:{}:{}".format(self.qtype, self.qname)
-        cache_ret = r.get(cache_key)
+        cache_ret = cache_db.get(cache_key)
         if cache_ret:
             log.info("cache_hit: {}".format(self.query_id))
             response_packet = DNSRecord()
@@ -104,11 +110,11 @@ class CleanDNSHandler(DatagramRequestHandler):
 
     def white_list_check(self):
         white_qname_key = "white_list:{}".format(self.qname)
-        return r.exists(white_qname_key)
+        return setup_domain_db.exists(white_qname_key)
 
     def black_list_check(self):
         black_qname_key = "black_list:{}".format(self.qname)
-        return r.exists(black_qname_key)
+        return setup_domain_db.exists(black_qname_key)
 
     def request_upstream_DNS(self):
         log.info("request the upstream DNS")
@@ -120,7 +126,8 @@ class CleanDNSHandler(DatagramRequestHandler):
 
         cache_key = "cache:{}:{}".format(self.qtype, self.qname)
         response_parse_ret = DNSRecord.parse(response_packet)
-        r.setex(cache_key, RECORD_CACHE_TIME, dumps(response_parse_ret.rr))
+        cache_db.setex(
+            cache_key, RECORD_CACHE_TIME, dumps(response_parse_ret.rr))
 
     def handle(self):
         """
@@ -148,7 +155,7 @@ class CleanDNSHandler(DatagramRequestHandler):
         else:
             # use white DNS and push into check list
             self.selected_DNS = "8.8.8.8"
-            r.sadd("gray_list", self.qname)
+            gray_domain_db.sadd("gray_list", self.qname)
 
         # 请求上游DNS
         self.request_upstream_DNS()
@@ -167,7 +174,10 @@ if __name__ == "__main__":
     from logging import INFO
     log.setLevel(INFO)
 
-    r = StrictRedis()
+    frequency_db = StrictRedis(db=FREQUENCY_DB_NO)
+    cache_db = StrictRedis(db=CACHE_DB_NO)
+    setup_domain_db = StrictRedis(db=SETUP_DOMAIN_DB_NO)
+    gray_domain_db = StrictRedis(db=GRAY_DOMAIN_DB_NO)
 
     server = UDPServer(("0.0.0.0", 5353), CleanDNSHandler)
     log.info("DNS server start at 0.0.0.0:5353")
