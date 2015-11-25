@@ -175,7 +175,7 @@ if __name__ == "__main__":
     setup_domain_db = StrictRedis(db=SETUP_DOMAIN_DB_NO)
     gray_domain_db = StrictRedis(db=GRAY_DOMAIN_DB_NO)
 
-    server = UDPServer(("0.0.0.0", 5353), CleanDNSHandler)
+    server = UDPServer(("0.0.0.0", 53), CleanDNSHandler)
     log.info("DNS server start at 0.0.0.0:5353")
     server.serve_forever()
     # server_thread = Thread(target=server.serve_forever)
