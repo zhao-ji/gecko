@@ -8,8 +8,8 @@
 from pickle import dumps, loads
 from random import choice
 import socket
-from SocketServer import UDPServer, DatagramRequestHandler
-# from threading import Thread
+from SocketServer import ThreadingUDPServer, DatagramRequestHandler
+from threading import Thread
 from time import time
 
 from dnslib import DNSRecord, DNSQuestion
@@ -43,9 +43,10 @@ class CleanDNSHandler(DatagramRequestHandler):
         else:
             self.finish()
         finally:
-            log.info("client_ip: {}, query_id: {}, qname: {}, qtype: {}".format(
-                self.client_address[0],
-                self.query_id, self.qname, self.qtype))
+            log.info(
+                "client_ip: {}, query_id: {}, qname: {}, qtype: {}".format(
+                    self.client_address[0], self.query_id,
+                    self.qname, self.qtype))
 
     def IP_frequency(self):
         # IP_int = reduce(lambda i, j: i*2**8 + int(j),
@@ -156,28 +157,42 @@ class CleanDNSHandler(DatagramRequestHandler):
         # 请求上游DNS
         self.request_upstream_DNS()
 
+    # def finish(self):
+    #     self.socket.sendto(self.wfile.getvalue(), self.client_address)
+
 if __name__ == "__main__":
     from logging import StreamHandler
+    from logging.handlers import TimedRotatingFileHandler
     stream_handler = StreamHandler()
+    file_handler = TimedRotatingFileHandler(
+        "./runtime_log", when="D", interval=1, delay=True)
     from logging import Formatter
     formatter = Formatter(
         fmt='%(asctime)s %(lineno)d %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S')
     stream_handler.setFormatter(formatter)
+    file_handler.setFormatter(formatter)
     from logging import getLogger
     log = getLogger(__name__)
-    log.addHandler(stream_handler)
+    log.addHandler(file_handler)
+    fuck = getLogger("{}_stream_logger".format(__name__))
+    fuck.addHandler(stream_handler)
     from logging import INFO
     log.setLevel(INFO)
+    fuck.setLevel(INFO)
 
     frequency_db = StrictRedis(db=FREQUENCY_DB_NO)
     cache_db = StrictRedis(db=CACHE_DB_NO)
     setup_domain_db = StrictRedis(db=SETUP_DOMAIN_DB_NO)
     gray_domain_db = StrictRedis(db=GRAY_DOMAIN_DB_NO)
 
-    server = UDPServer(("0.0.0.0", 53), CleanDNSHandler)
-    log.info("DNS server start at 0.0.0.0:5353")
-    server.serve_forever()
-    # server_thread = Thread(target=server.serve_forever)
-    # server_thread.daemon = False
-    # server_thread.start()
+    server = ThreadingUDPServer(("0.0.0.0", 5353), CleanDNSHandler)
+    server_thread = Thread(target=server.serve_forever)
+    server_thread.daemon = True
+    try:
+        fuck.info("threading DNS server start at 0.0.0.0:53")
+        server_thread.start()
+    except KeyboardInterrupt:
+        fuck.info("keyborad interrupt!")
+        server.shutdown()
+        server.server_close()
